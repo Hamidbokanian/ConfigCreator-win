@@ -1,0 +1,55 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Tests (parser, config builder, scanners, app flow with a fake core)
+        continue-on-error: true
+        run: python -W ignore -m unittest discover -s tests -t .
+
+      - name: Download Xray core
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo XTLS/Xray-core --pattern 'Xray-windows-64.zip' --dir dl --clobber
+          Expand-Archive dl/Xray-windows-64.zip -DestinationPath dl/xray -Force
+
+      - name: Download Wintun (needed only for the full-VPN mode)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://www.wintun.net/builds/wintun-0.14.1.zip -OutFile dl/wintun.zip
+          Expand-Archive dl/wintun.zip -DestinationPath dl/wintun -Force
+
+      - name: Build the exe
+        shell: pwsh
+        run: |
+          pip install pyinstaller
+          pyinstaller --onefile --name ConfigFinder --add-data "cf/ui;cf/ui" main.py
+
+      - name: Assemble the package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force pkg | Out-Null
+          Copy-Item dist/ConfigFinder.exe pkg/
+          Copy-Item dl/xray/xray.exe pkg/
+          Copy-Item dl/xray/geoip.dat, dl/xray/geosite.dat pkg/ -ErrorAction SilentlyContinue
+          Copy-Item dl/wintun/wintun/bin/amd64/wintun.dll pkg/
+          Copy-Item README.md pkg/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ConfigFinder-Windows
+          path: pkg
