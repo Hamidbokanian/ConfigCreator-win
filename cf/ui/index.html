@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Config Finder</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --line: #334155; --text: #f1f5f9; --dim: #94a3b8;
+    --blue: #2563eb; --green: #16a34a; --red: #dc2626; --cyan: #0891b2; --amber: #fbbf24;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f1f5f9; --card: #ffffff; --line: #cbd5e1; --text: #0f172a; --dim: #475569; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font-family: "Segoe UI", Tahoma, "Vazirmatn", sans-serif; line-height: 1.7; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 40px; }
+  h1 { margin: 0 0 4px; font-size: 26px; }
+  .sub { color: var(--dim); margin-bottom: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-bottom: 14px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button { font: inherit; color: #fff; background: var(--blue); border: 0; border-radius: 12px;
+           padding: 10px 18px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  button.green { background: var(--cyan); } button.red { background: var(--red); }
+  button.gray { background: #475569; }
+  .big { padding: 14px 22px; font-size: 17px; flex: 1; min-width: 200px; }
+  .status { font-size: 17px; font-weight: 600; }
+  .ok { color: #22c55e; } .warn { color: var(--amber); } .bad { color: #f87171; }
+  .bar { height: 10px; background: var(--line); border-radius: 6px; overflow: hidden; margin-top: 8px; }
+  .bar > div { height: 100%; width: 0; background: var(--blue); transition: width .3s; }
+  .item { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+          border-top: 1px solid var(--line); padding: 10px 0; }
+  .item:first-child { border-top: 0; }
+  .badge { display: inline-block; padding: 1px 9px; border-radius: 999px; font-size: 12px; background: var(--line); }
+  .host { direction: ltr; unicode-bidi: plaintext; font-family: Consolas, monospace; word-break: break-all; }
+  .meta { color: var(--dim); font-size: 13px; }
+  label { display: block; margin: 10px 0 4px; color: var(--dim); }
+  input[type=number], textarea { width: 100%; font: inherit; padding: 8px 10px; border-radius: 10px;
+          border: 1px solid var(--line); background: var(--bg); color: var(--text); direction: ltr; }
+  .modes label { display: flex; gap: 8px; align-items: flex-start; color: var(--text); margin: 6px 0; }
+  footer { text-align: center; color: var(--dim); margin-top: 26px; font-size: 14px; }
+  details summary { cursor: pointer; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Config Finder</h1>
+  <div class="sub">کانفیگ‌هایی که واقعاً کار می‌کنن؛ تست از اینترنت خودت و با هسته‌ی Xray.</div>
+
+  <div class="card">
+    <div id="connStatus" class="status">⚪ متصل نیستی</div>
+    <div id="connMsg" class="meta"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnDisconnect" class="red" style="display:none">قطع اتصال</button>
+    </div>
+  </div>
+
+  <div class="card modes">
+    <strong>نوع اتصال</strong>
+    <label><input type="radio" name="mode" value="proxy" checked>
+      <span>پروکسی سیستم <span class="meta">(بدون نیاز به Admin؛ مرورگرها و برنامه‌هایی که پروکسی سیستم رو می‌خونن. پورت‌های محلی: SOCKS 10808 و HTTP 10809)</span></span></label>
+    <label><input type="radio" name="mode" value="tun">
+      <span>VPN کامل (TUN) <span class="meta">(همه‌ی برنامه‌ها؛ باید برنامه رو با «Run as administrator» باز کنی و wintun.dll کنار xray.exe باشه)</span></span></label>
+    <div id="envWarn" class="meta warn"></div>
+  </div>
+
+  <div class="row" style="margin-bottom:14px">
+    <button id="btnAuto" class="big green">🔌 اتصال خودکار (بهترین کانفیگ)</button>
+    <button id="btnScan" class="big">🔍 فقط اسکن</button>
+  </div>
+
+  <div class="card" id="scanCard" style="display:none">
+    <div id="scanMsg"></div>
+    <div class="bar"><div id="scanBar"></div></div>
+    <div class="meta" id="scanNums"></div>
+    <div class="row" style="margin-top:8px"><button id="btnCancel" class="gray">لغو</button></div>
+  </div>
+
+  <div class="card" id="resultsCard" style="display:none">
+    <strong id="resTitle">نتیجه‌ها</strong>
+    <div id="results"></div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>تنظیمات</summary>
+      <label>حداکثر پینگ اتصال (میلی‌ثانیه) — مرحله‌ی ۱</label>
+      <input type="number" id="maxPing" min="20" max="1000">
+      <label>حداکثر پینگ واقعی (میلی‌ثانیه) — مرحله‌ی ۲
+        <span class="meta">(یه درخواست کامل HTTPS از داخل پروکسیه؛ معمولاً چند برابر پینگ اتصاله)</span></label>
+      <input type="number" id="maxReal" min="100" max="10000">
+      <label><input type="checkbox" id="bypassIr"> سایت‌های ‎.ir مستقیم باز بشن (بدون پروکسی)</label>
+      <label>منابع اضافه (هر خط یک لینک لیست کانفیگ)</label>
+      <textarea id="extra" rows="3"></textarea>
+      <div class="row" style="margin-top:10px"><button id="btnSave">ذخیره</button><span id="saved" class="meta"></span></div>
+    </details>
+  </div>
+
+  <div class="meta">پینگ اتصال = زمان TCP تا سرور. تست واقعی = یه درخواست HTTPS از داخل خود کانفیگ. فقط کانفیگ‌هایی که واقعاً ترافیک رد کنن نشون داده میشن. قبل از اسکن VPN/پروکسی دیگه رو خاموش کن.</div>
+  <footer>ساخته‌شده توسط حمید بوکانیان — 09378976737</footer>
+</main>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = (id) => document.getElementById(id);
+let state = null, settingsLoaded = false;
+
+async function api(path, body) {
+  const opt = { headers: { "X-Token": TOKEN } };
+  if (body !== undefined) { opt.method = "POST"; opt.body = JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  return r.json();
+}
+const selectedMode = () => document.querySelector("input[name=mode]:checked").value;
+
+function render() {
+  if (!state) return;
+  const c = state.conn, s = state.scan, env = state.env;
+
+  const cs = $("connStatus");
+  if (c.state === "connected") { cs.className = "status ok"; cs.textContent = "🔒 متصل شدی — پینگ واقعی: " + c.delay + " ms"; }
+  else if (c.state === "connecting") { cs.className = "status warn"; cs.textContent = "⏳ در حال اتصال…"; }
+  else if (c.state === "failed") { cs.className = "status bad"; cs.textContent = "✖ اتصال انجام نشد"; }
+  else { cs.className = "status"; cs.textContent = "⚪ متصل نیستی"; }
+  $("connMsg").textContent = c.message || "";
+  $("btnDisconnect").style.display = (c.state === "connected" || c.state === "connecting") ? "" : "none";
+
+  const busy = s.phase === "loading" || s.phase === "tcp" || s.phase === "real";
+  $("btnAuto").disabled = busy; $("btnScan").disabled = busy;
+  $("scanCard").style.display = (busy || s.phase === "error" || (s.phase === "done" && s.message)) ? "" : "none";
+  $("scanMsg").textContent = s.message;
+  $("scanMsg").className = s.phase === "error" ? "bad" : (s.phase === "done" ? "ok" : "");
+  $("scanBar").style.width = s.total ? Math.round(100 * s.done / s.total) + "%" : "0";
+  $("scanNums").textContent = s.total ? (s.done + " از " + s.total + "   |   سالم: " + s.found) : "";
+  $("btnCancel").style.display = busy ? "" : "none";
+
+  const warns = [];
+  if (!env.xray) warns.push("⚠️ هسته‌ی Xray (xray.exe) کنار برنامه پیدا نشد؛ تست واقعی و اتصال کار نمی‌کنه.");
+  if (env.windows && selectedMode() === "tun") {
+    if (!env.admin) warns.push("⚠️ برای VPN کامل برنامه رو با Run as administrator باز کن.");
+    if (!env.wintun) warns.push("⚠️ فایل wintun.dll کنار xray.exe نیست.");
+  }
+  $("envWarn").textContent = warns.join("  ");
+
+  const list = $("results");
+  const res = state.results;
+  $("resultsCard").style.display = res.length ? "" : "none";
+  if (res.length) {
+    $("resTitle").textContent = "نتیجه‌ها (" + res.length + ")";
+    const sig = JSON.stringify(res.map(r => r.idx + r.raw.length)) + c.index + c.state;
+    if (list.dataset.sig !== sig) {
+      list.dataset.sig = sig;
+      list.textContent = "";
+      res.forEach((r) => list.appendChild(renderItem(r, c)));
+    }
+  }
+
+  if (!settingsLoaded) {
+    settingsLoaded = true;
+    $("maxPing").value = state.settings.max_ping;
+    $("maxReal").value = state.settings.max_real;
+    $("bypassIr").checked = state.settings.bypass_ir;
+    $("extra").value = state.settings.extra_sources;
+    document.querySelector("input[name=mode][value=" + state.settings.mode + "]").checked = true;
+  }
+}
+
+function renderItem(r, c) {
+  const div = document.createElement("div"); div.className = "item";
+  const info = document.createElement("div");
+  const head = document.createElement("div");
+  const b = document.createElement("span"); b.className = "badge"; b.textContent = r.protocol.toUpperCase();
+  head.appendChild(b);
+  const host = document.createElement("span"); host.className = "host"; host.textContent = " " + r.host + ":" + r.port;
+  head.appendChild(host);
+  info.appendChild(head);
+  const meta = document.createElement("div"); meta.className = "meta";
+  const parts = [];
+  if (r.real_ms > 0) parts.push("✔ پینگ واقعی: " + r.real_ms + " ms");
+  parts.push("پینگ اتصال: " + r.ping_ms + " ms");
+  if (r.tested) parts.push("از لیست تست‌شده");
+  if (r.name) parts.push(r.name);
+  meta.textContent = parts.join("   |   ");
+  info.appendChild(meta);
+  div.appendChild(info);
+
+  const act = document.createElement("div"); act.className = "row";
+  const go = document.createElement("button"); go.className = "green";
+  const active = c.index === r.idx && c.state === "connected";
+  go.textContent = active ? "متصل ✔" : "اتصال"; go.disabled = active || c.state === "connecting";
+  go.onclick = async () => { await api("/api/settings", currentSettings()); await api("/api/connect", { index: r.idx }); refresh(); };
+  const cp = document.createElement("button"); cp.className = "gray"; cp.textContent = "کپی";
+  cp.onclick = async () => { try { await navigator.clipboard.writeText(r.raw); cp.textContent = "کپی شد ✔"; } catch (e) { cp.textContent = "ناموفق"; } setTimeout(() => cp.textContent = "کپی", 1500); };
+  act.appendChild(go); act.appendChild(cp);
+  div.appendChild(act);
+  return div;
+}
+
+function currentSettings() {
+  return { max_ping: +$("maxPing").value || 150, max_real: +$("maxReal").value || 1500,
+           bypass_ir: $("bypassIr").checked, extra_sources: $("extra").value, mode: selectedMode() };
+}
+
+async function refresh() { try { state = await api("/api/state"); render(); } catch (e) { /* server closed */ } }
+
+$("btnAuto").onclick = async () => { await api("/api/settings", currentSettings()); await api("/api/scan", { auto: true }); refresh(); };
+$("btnScan").onclick = async () => { await api("/api/settings", currentSettings()); await api("/api/scan", { auto: false }); refresh(); };
+$("btnCancel").onclick = async () => { await api("/api/cancel", {}); refresh(); };
+$("btnDisconnect").onclick = async () => { await api("/api/disconnect", {}); refresh(); };
+$("btnSave").onclick = async () => { await api("/api/settings", currentSettings()); $("saved").textContent = "ذخیره شد ✔"; setTimeout(() => $("saved").textContent = "", 1500); };
+document.querySelectorAll("input[name=mode]").forEach(el => el.onchange = async () => { await api("/api/settings", currentSettings()); refresh(); });
+
+refresh(); setInterval(refresh, 800);
+</script>
+</body>
+</html>
